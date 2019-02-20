@@ -1,0 +1,4 @@
+<nav class="menu">
+    <div class="menu__logo menu__link">Ien Sen</div>
+    <a class="menu__link" *ngFor="let link of links" [routerLink]="link.path">{{ link.title }}</a>
+</nav>
