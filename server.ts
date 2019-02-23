@@ -1,23 +1,23 @@
 import * as express from 'express';
-import { Application, Request, Response, Errback, NextFunction,  } from 'express';
+import { Application, Request, Response, Errback, NextFunction } from 'express';
 import * as bodyParser from 'body-parser';
 import * as expressJwt from 'express-jwt';
 import * as jwt from 'jsonwebtoken';
 import * as cookieParser from 'cookie-parser';
 import User from './shared/models/User';
 import Payload from './shared/types/Payload';
-
-interface IRequest extends Request {
-    tokenData?: Payload;
-}
+import IResponse from './shared/types/IResponse';
+import { log } from './shared/utils';
 
 const app: Application = express();
 const secret = 'secret' || process.env.JWT_SECRET;
-const root: User = {
-    id: 1,
-    username: 'root',
-    password: '111111' || process.env.ROOT_PASSWORD,
-};
+const users: User[] = [
+    new User({
+        id: 1,
+        username: 'root',
+        password: '111111' || process.env.ROOT_PASSWORD,
+    }),
+];
 
 const tokens = {};
 
@@ -37,46 +37,51 @@ app.use(
             }
             return token;
         },
-        isRevoked: (req: any, payload: any, done: any) => {
+        isRevoked: (req: any, payload: Payload, done: any) => {
+            // TODO expired token Date.now() - payload.iat
             if (tokens[payload.id]) {
-                console.log(payload, Date.now() - payload.iat);
                 return done(null, false);
             }
             return done(null, true);
         },
-    }).unless({ path: ['/api/users/authentificate'] })
+    }).unless({ path: [ '/api/users/authentificate' ] })
 );
 
 app.post('/api/users/authentificate', (req: Request, res: Response) => {
-    if (req.body.username === root.username && req.body.password === root.password) {
-        const payload: Payload = { id: root.id, iat: Date.now() };
-        tokens[root.id] = jwt.sign(payload, secret);
-        res.set({ 'X-Token': tokens[root.id] });
-        res.cookie('X-Token', tokens[root.id], { maxAge: 900000, httpOnly: true });
-        const { password, ...user } = root;
-        return res.json({ ...user, token: tokens[root.id] });
+    const user = users.find((userObj: User) => userObj.username === req.body.username);
+    if (user && req.body.password === user.password) {
+        const payload: Payload = { id: user.id, iat: Date.now() };
+        tokens[user.id] = jwt.sign(payload, secret);
+        res.set({ 'X-Token': tokens[user.id] });
+        res.cookie('X-Token', tokens[user.id], { maxAge: 900000, httpOnly: true });
+        log('User authentificate', user.printData);
+        return res.json({ ...user.printData, token: tokens[user.id] });
     }
     return res.sendStatus(403);
 });
 
-app.get('/api/users/logout', (req: IRequest, res: Response) => {
-    console.log(req);
-    delete tokens[req.tokenData.id];
-    res.clearCookie('X-Token');
-    return res.sendStatus(204);
+app.get('/api/users/logout', (req: Request, res: IResponse) => {
+    const user = users.find((u: User) => u.id === res.tokenData.id);
+    if (user) {
+        log('User logout', user.printData);
+        delete tokens[user.id];
+        res.clearCookie('X-Token');
+        return res.sendStatus(204);
+    }
+    return res.sendStatus(500);
 });
 
-app.get('/api/', (req: Request, res: Response) => {
-    console.log(Object.keys(req), Object.keys(res));
-    res.send('asdsadsaddsad');
+app.get('/api/', (req: Request, res: IResponse) => {
+    res.json(res.tokenData);
 });
 
-app.use((err: Errback, req: Request, res: Response, next: NextFunction) => {
+app.use((err: Errback, req: Request, res: IResponse, next: NextFunction) => {
     if (err.name === 'UnauthorizedError') {
-        res.status(401).send('invalid token...');
+        log('Invalid token', { url: req.originalUrl, tokenData: res.tokenData })
+        res.sendStatus(401);
     }
 });
 
 app.listen(3000, () => {
-    console.log('Server started: http://localhost:3000/');
+    log('Server started: http://localhost:3000/');
 });

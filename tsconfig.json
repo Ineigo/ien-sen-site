@@ -19,5 +19,5 @@
       "dom"
     ]
   },
-  "include": ["shared/**/*.d.ts", "shared/**/*.ts"]
+  "include": ["./shared/**/*", "./src/**/*"]
 }
