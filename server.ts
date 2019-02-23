@@ -4,9 +4,8 @@ import * as bodyParser from 'body-parser';
 import * as expressJwt from 'express-jwt';
 import * as jwt from 'jsonwebtoken';
 import * as cookieParser from 'cookie-parser';
-import User from './shared/models/User';
-import Payload from './shared/types/Payload';
-import IResponse from './shared/types/IResponse';
+import { User } from './shared/models';
+import { Payload, IResponse } from './shared/types';
 import { log } from './shared/utils';
 
 const app: Application = express();
