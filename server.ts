@@ -23,8 +23,7 @@ const tokens = {};
 
 app.use(bodyParser.json());
 app.use(cookieParser());
-app.use(
-    expressJwt({
+const auth = expressJwt({
         secret,
         requestProperty: 'tokenData',
         resultProperty: 'tokenData',
@@ -44,13 +43,12 @@ app.use(
             }
             return done(null, true);
         },
-    }).unless({ path: [ '/api/users/authentificate' ] })
-);
+    });
 
 app.post('/api/users/authentificate', (req: Request, res: Response) => {
     const user = users.find((userObj: User) => userObj.username === req.body.username);
     if (user && req.body.password === user.password) {
-        const payload: Payload = { id: user.id, iat: Date.now() };
+        const payload: Payload = { ...user.printData, iat: Date.now() };
         tokens[user.id] = jwt.sign(payload, secret);
         res.set({ 'X-Token': tokens[user.id] });
         res.cookie('X-Token', tokens[user.id], { maxAge: 900000, httpOnly: true });
@@ -60,7 +58,7 @@ app.post('/api/users/authentificate', (req: Request, res: Response) => {
     return res.sendStatus(403);
 });
 
-app.get('/api/users/logout', (req: Request, res: IResponse) => {
+app.get('/api/users/logout', auth, (req: Request, res: IResponse) => {
     const user = users.find((u: User) => u.id === res.tokenData.id);
     if (user) {
         log('User logout', user.printData);
@@ -71,7 +69,7 @@ app.get('/api/users/logout', (req: Request, res: IResponse) => {
     return res.sendStatus(500);
 });
 
-app.get('/api/', (req: Request, res: IResponse) => {
+app.get('/api/', auth, (req: Request, res: IResponse) => {
     res.json(res.tokenData);
 });
 
