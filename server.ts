@@ -1,15 +1,14 @@
 import * as express from 'express';
 import { Application, Request, Response, Errback, NextFunction } from 'express';
 import * as bodyParser from 'body-parser';
-import * as expressJwt from 'express-jwt';
-import * as jwt from 'jsonwebtoken';
 import * as cookieParser from 'cookie-parser';
 import { User } from './shared/models';
 import { Payload, IResponse } from './shared/types';
 import { log } from './shared/utils';
+import { authGuardFabric, createToken, removeToken } from './server/AuthGuard';
 
 const app: Application = express();
-const secret = 'secret' || process.env.JWT_SECRET;
+const secret: string = 'secret' || process.env.JWT_SECRET;
 const users: User[] = [
     new User({
         id: 1,
@@ -18,41 +17,20 @@ const users: User[] = [
     }),
 ];
 
-const tokens = {};
-
 app.use(bodyParser.json());
 app.use(cookieParser());
-const auth = expressJwt({
-        secret,
-        requestProperty: 'tokenData',
-        resultProperty: 'tokenData',
-        getToken: (req: Request) => {
-            let token: string | null = null;
-            if (req.cookies['X-Token']) {
-                token = req.cookies['X-Token'];
-            } else if (req.headers['x-token']) {
-                token = req.headers['x-token'] as string;
-            }
-            return token;
-        },
-        isRevoked: (req: any, payload: Payload, done: any) => {
-            // TODO expired token Date.now() - payload.iat
-            if (tokens[payload.id]) {
-                return done(null, false);
-            }
-            return done(null, true);
-        },
-    });
+
+const auth = authGuardFabric(secret);
 
 app.post('/api/users/authentificate', (req: Request, res: Response) => {
     const user = users.find((userObj: User) => userObj.username === req.body.username);
     if (user && req.body.password === user.password) {
         const payload: Payload = { ...user.printData, iat: Date.now() };
-        tokens[user.id] = jwt.sign(payload, secret);
-        res.set({ 'X-Token': tokens[user.id] });
-        res.cookie('X-Token', tokens[user.id], { maxAge: 900000, httpOnly: true });
+        const token = createToken(secret, payload);
+        res.set({ 'X-Token': token });
+        res.cookie('X-Token', token, { maxAge: 900000, httpOnly: true });
         log('User authentificate', user.printData);
-        return res.json({ ...user.printData, token: tokens[user.id] });
+        return res.json({ ...user.printData, token: token });
     }
     return res.sendStatus(403);
 });
@@ -61,7 +39,7 @@ app.get('/api/users/logout', auth, (req: Request, res: IResponse) => {
     const user = users.find((u: User) => u.id === res.tokenData.id);
     if (user) {
         log('User logout', user.printData);
-        delete tokens[user.id];
+        removeToken(user.id);
         res.clearCookie('X-Token');
         return res.sendStatus(204);
     }
